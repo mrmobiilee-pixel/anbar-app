@@ -695,7 +695,7 @@ const dbApi={
         let set=listeners.get(c);if(!set){set=new Set();listeners.set(c,set)}
         const rec={ok,err,ping:okk=>{}};
         set.add(rec);
-        collectionDocs(c).then(docs=>ok({docs,size:docs.length})).catch(e=>err&&err(e));
+        collectionDocs(c).then(docs=>{try{ok({docs,size:docs.length})}catch(e){console.error(e)}},e=>err&&err(e));
         return ()=>set.delete(rec);
       }
     };
@@ -821,7 +821,7 @@ async function initDb(){
   ["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers"].forEach(c=>{
     db.collection(c).onSnapshot(snap=>{
       col[c]=new Map(snap.docs.map(d=>[d.id,d.data()]));
-      loaded[c]=true;syncMark(true);
+      loaded[c]=true;syncMark(true);$("#dbnotice").hidden=true;
       render();
     },err=>{
       if(err&&err.code==="revoked")return;
