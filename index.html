@@ -1403,24 +1403,32 @@ function renderDues(){
         ?'<button class="btn danger small" data-act="pay-del-yes" data-pid="'+p.id+'">حذف شود؟</button><button class="btn ghost small" data-act="pay-del-no">نه</button>'
         :'<button class="btn danger small" data-act="pay-del" data-pid="'+p.id+'">حذف</button>';
       return "<tr><td>"+faDate(p.due)+'<div><span class="pill '+st.cls+'">'+st.txt+"</span></div></td>"+
-        "<td><b>"+esc(p.party||"—")+'</b><div class="sub">'+(p.dir==="out"?"بدهی من":"طلب من")+"</div></td>"+
+        "<td><b>"+esc(p.party||"—")+'</b><div class="sub">'+(p.dir==="out"?"بدهی من":"طلب من")+"</div>"+(p.src==="invoice"&&col.invoices.get(p.refId)?'<div class="sub">فاکتور '+esc(col.invoices.get(p.refId).no||"—")+"</div>":"")+"</td>"+
         "<td>"+METHOD[p.method]+(p.seq?' <span class="sub">'+fmt(p.seq)+"</span>":"")+'</td><td class="num"><b>'+fmt(p.amount)+"</b></td>"+
         '<td class="num">'+(esc(p.checkNo)||"—")+(p.bank?'<div class="sub">'+esc(p.bank)+"</div>":"")+"</td>"+
         '<td class="sub">'+esc(p.note||"")+"</td><td><div class=\"inl\">"+act+del+"</div></td></tr>";
     }).join("")+"</tbody></table>";
 }
 
+let payFor=null;
 function invPaymentsHtml(invId,invTotal){
   const list=payList().filter(p=>p.refId===invId&&p.src==="invoice").sort((a,b)=>a.due.localeCompare(b.due));
-  if(!list.length)return "";
   const sum=list.reduce((s,p)=>s+p.amount,0),rest=invTotal-sum;
+  const paid=list.filter(p=>p.status==="done").reduce((s,p)=>s+p.amount,0);
   const lines=list.map(p=>{
     const st=dueState(p);
     const btn=p.status==="pending"?'<button class="btn small" data-act="pay-done" data-pid="'+p.id+'">'+doneLabel(p)+"</button>":'<button class="btn ghost small" data-act="pay-undo" data-pid="'+p.id+'">برگشت</button>';
-    return "<li><span>"+METHOD[p.method]+(p.checkNo?" "+esc(p.checkNo):"")+(p.bank?" · "+esc(p.bank):"")+" · "+faDate(p.due)+
-      ' <span class="pill '+st.cls+'">'+st.txt+'</span></span><span class="inl"><span class="num">'+fmt(p.amount)+"</span>"+btn+"</span></li>";
+    const del='<button class="btn danger small" data-act="pay-del-inv" data-pid="'+p.id+'">حذف</button>';
+    return "<li><span><b>"+METHOD[p.method]+"</b>"+(p.checkNo?" "+esc(p.checkNo):"")+(p.bank?" · "+esc(p.bank):"")+" · "+faDate(p.status==="done"&&p.method==="cash"?(p.doneDate||p.due):p.due)+
+      ' <span class="pill '+st.cls+'">'+st.txt+'</span></span><span class="inl"><span class="num">'+fmt(p.amount)+"</span>"+btn+del+"</span></li>";
   }).join("");
-  return '<div class="sub" style="margin-top:12px"><b>پرداخت‌ها</b>'+(rest>0?" · هنوز تعیین‌نشده: "+fmt(rest):(rest<0?" · "+fmt(-rest)+" بیشتر از فاکتور":""))+'</div><ul class="invitems">'+lines+"</ul>";
+  const form=payFor===invId
+    ?'<div class="pline" id="inv-payform" data-inv="'+invId+'">'+payLineHtml().replace('<button type="button" class="btn danger small p-del">حذف</button>','')+
+      '<button type="button" class="btn small" data-act="inv-pay-save" data-id="'+invId+'">ذخیره پرداخت</button><button type="button" class="btn ghost small" data-act="inv-pay-cancel">انصراف</button></div>'
+    :'<button type="button" class="btn ghost small" style="margin-top:8px" data-act="inv-pay-add" data-id="'+invId+'">+ ثبت پرداخت (نقد، چک یا وعده)</button>';
+  return '<div class="sub" style="margin-top:12px"><b>پرداخت‌ها به '+'این فاکتور</b> · پرداخت‌شده: '+fmt(paid)+" · جمع ثبت‌شده: "+fmt(sum)+
+    (rest>0?" · مانده‌ی ثبت‌نشده: "+fmt(rest):(rest<0?" · "+fmt(-rest)+" بیشتر از فاکتور":" · کامل"))+'</div>'+
+    (list.length?'<ul class="invitems">'+lines+"</ul>":'<div class="sub">هنوز پرداختی برای این فاکتور ثبت نشده است.</div>')+form;
 }
 
 /* ---------- tabs ---------- */
@@ -1599,6 +1607,21 @@ $("#inv-form").addEventListener("submit",async e=>{
 $("#inv-list").addEventListener("click",async e=>{
   const b=e.target.closest("button[data-act]");if(!b)return;
   const act=b.dataset.act,id=b.dataset.id;
+  if(act==="inv-pay-add"){payFor=id;return renderInvoices()}
+  if(act==="inv-pay-cancel"){payFor=null;return renderInvoices()}
+  if(act==="pay-del-inv"){await del("payments",b.dataset.pid);toast("حذف شد");return}
+  if(act==="inv-pay-save"){
+    const inv=col.invoices.get(id),el=$("#inv-payform");if(!inv||!el)return;
+    const method=$(".p-method",el).value,amount=parseNum($(".p-amt",el).value);
+    if(!(amount>0))return toast("مبلغ را وارد کنید");
+    let due=todayISO();
+    if(method!=="cash"){due=readDate($(".p-due",el));if(!due)return toast("تاریخ سررسید را شمسی بنویسید، مثلاً "+jInput(addDays(todayISO(),30)))}
+    const chk=$(".p-chk",el).value.trim(),bank=$(".p-bank",el).value.trim();
+    payFor=null;
+    await addPayment({dir:"out",method,party:inv.supplier,amount,due,checkNo:chk,bank,
+      status:method==="cash"?"done":"pending",doneDate:todayISO(),src:"invoice",refId:id,note:"فاکتور "+(inv.no||"")});
+    toast("پرداخت ثبت شد");return;
+  }
   if(act==="inv-del"){confirming="inv:"+id;return renderInvoices()}
   if(act==="inv-no"){confirming=null;return renderInvoices()}
   if(act==="inv-yes"){
@@ -1616,6 +1639,12 @@ $("#inv-list").addEventListener("click",async e=>{
   }
 });
 
+
+$("#inv-list").addEventListener("change",e=>{
+  const sel=e.target.closest(".p-method");if(!sel)return;
+  const line=sel.closest(".pline"),m=sel.value;
+  $(".p-due-wrap",line).hidden=m==="cash";$(".p-chk-wrap",line).hidden=m!=="cheque";$(".p-bank-wrap",line).hidden=m!=="cheque";
+});
 
 /* ---------- unit toggles ---------- */
 $("#m-unit").addEventListener("change",e=>{
