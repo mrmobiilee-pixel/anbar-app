@@ -254,6 +254,14 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
   <!-- فاکتور خرید -->
   <section class="panel" id="p-buy">
     <div class="card" style="margin-bottom:16px">
+      <h2 style="margin:0 0 4px;font-size:16px">ورود گروهی کالاها (از اکسل یا نرم‌افزار حسابداری)</h2>
+      <p class="hint">برای وارد کردن موجودی قدیمی انبار. در اکسل ستون‌ها را به این ترتیب بچینید: <b>نام کالا، مدل، تعداد، قیمت خرید هر عدد</b> و (اختیاری) <b>قیمت فروش</b>. ردیف‌ها را انتخاب و کپی کنید و اینجا بچسبانید. فاکتور ساخته نمی‌شود و فقط موجودی اضافه می‌شود.</p>
+      <label class="f" style="margin-bottom:8px">ردیف‌ها<textarea id="bulk-txt" rows="6" style="width:100%;font-family:inherit" placeholder="کابل&#9;YESIDO CA602&#9;3&#9;86450"></textarea></label>
+      <label class="f chk" style="padding-top:0"><input type="checkbox" id="bulk-rial"> قیمت‌ها ریال است (تقسیم بر ۱۰ شود)</label>
+      <div class="inl" style="margin-top:8px"><button class="btn ghost small" type="button" id="bulk-prev">بررسی</button><button class="btn" type="button" id="bulk-go" disabled>افزودن به انبار</button></div>
+      <div id="bulk-out" class="sub" style="margin-top:8px"></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
       <h2 style="margin:0 0 4px;font-size:16px">ساخت فاکتور از روی عکس فاکتور و کاتالوگ شرکت</h2>
       <p class="hint">عکس (یا PDF) فاکتور خرید و، اگر دارید، صفحه‌های کاتالوگ شرکت را بدهید. ردیف‌های فاکتور خوانده می‌شود و عکس هر کالا از کاتالوگ جدا و کنار همان ردیف گذاشته می‌شود. بعد از بررسی، خودتان ثبت می‌کنید.</p>
       <div class="row2">
@@ -1273,7 +1281,7 @@ let sellOptsHtml="";
 function sellOptions(){
   const ps=Array.from(col.products).filter(([,p])=>p.qty>0).sort(byName);
   const us=stockUnits().sort(byName);
-  let h='<option value="">انتخاب کنید…</option>';
+  let h='<option value="">انتخاب کنید…</option><option value="x">➕ کالای ثبت‌نشده یا بدون موجودی (افزودن سریع)</option>';
   if(ps.length)h+='<optgroup label="کالاها">'+ps.map(([id,p])=>'<option value="p:'+id+'">'+esc(p.name)+" — "+esc(p.model)+" (موجودی "+fmt(p.qty)+")</option>").join("")+"</optgroup>";
   if(us.length)h+='<optgroup label="گوشی‌ها و کالاهای تکی">'+us.map(([id,u])=>'<option value="u:'+id+'">'+esc(u.name)+" — "+esc(u.model)+(u.serial?" · "+esc(u.serial):"")+"</option>").join("")+"</optgroup>";
   return h;
@@ -1284,8 +1292,17 @@ function refreshSellOptions(){
   sellOptsHtml=h;
   $$("#sell-lines .sl-item").forEach(s=>{const v=s.value;s.innerHTML=h;s.value=v});
 }
-function sellInfo(val){
+function sellInfo(val,line){
   if(!val)return null;
+  if(val==="x"){
+    if(!line)return null;
+    const name=$(".q-name",line).value.trim(),model=$(".q-model",line).value.trim(),c=parseNum($(".q-cost",line).value);
+    if(!name||!model)return null;
+    const f=findProduct(name,model);
+    if(f)return {kind:"p",id:f.id,name:f.p.name,model:f.p.model,serial:"",avail:Infinity,ref:salePrice(f.p).price,cost:c>0?c:f.p.avgCost,quick:true};
+    const cost=c>0?c:0;
+    return {kind:"p",id:null,name,model,serial:"",avail:Infinity,ref:cost>0?previewSale(model,cost).price:0,cost,quick:true,fresh:true};
+  }
   const k=val.slice(0,1),id=val.slice(2);
   if(k==="p"){const p=col.products.get(id);if(!p)return null;
     return {kind:"p",id,name:p.name,model:p.model,serial:"",avail:p.qty,ref:salePrice(p).price,cost:p.avgCost}}
@@ -1295,7 +1312,7 @@ function sellInfo(val){
 function updateSellTotals(){
   let total=0,profit=0;
   $$("#sell-lines .sline").forEach(el=>{
-    const info=sellInfo($(".sl-item",el).value),t=$(".tot",el);
+    const info=sellInfo($(".sl-item",el).value,el),t=$(".tot",el);
     const qty=parseNum($(".sl-qty",el).value),price=parseNum($(".sl-price",el).value);
     if(!info||!(qty>0)||!(price>=0)){t.textContent="";return}
     const lt=qty*price,lp=qty*(price-info.cost),diff=price-info.ref;
@@ -1725,7 +1742,10 @@ function addSellLine(){
     '<label class="f">تعداد<input class="sl-qty num" inputmode="numeric" value="1"></label>'+
     '<label class="f">تخفیف<input class="sl-disc num" placeholder="مبلغ یا ۵٪"></label>'+
     '<label class="f">قیمت نهایی (هر عدد)<input class="sl-price num" inputmode="numeric"></label>'+
-    '<button type="button" class="btn danger small del">حذف</button><div class="tot"></div>';
+    '<button type="button" class="btn danger small del">حذف</button>'+
+    '<div class="quick" hidden style="display:contents"><label class="f">نام کالا<input class="q-name" placeholder="مثلاً کابل"></label>'+
+    '<label class="f">مدل<input class="q-model" placeholder="مثلاً YESIDO CA602"></label>'+
+    '<label class="f">قیمت خرید (هر عدد)<input class="q-cost num" inputmode="numeric" placeholder="اگر نمی‌دانید خالی بگذارید"></label></div><div class="tot"></div>';
   $("#sell-lines").appendChild(d);
 }
 $("#add-sline").addEventListener("click",addSellLine);
@@ -1736,7 +1756,8 @@ $("#sell-lines").addEventListener("click",e=>{
 });
 $("#sell-lines").addEventListener("change",e=>{
   const sel=e.target.closest(".sl-item");if(!sel)return;
-  const line=sel.closest(".sline"),info=sellInfo(sel.value);
+  const line=sel.closest(".sline"),info=sellInfo(sel.value,line);
+  $(".quick",line).hidden=sel.value!=="x";$(".quick",line).style.display=sel.value==="x"?"contents":"none";
   const qty=$(".sl-qty",line),price=$(".sl-price",line);
   $(".sl-disc",line).value="";
   if(info){price.value=info.ref;qty.value="1";qty.disabled=info.kind==="u"}
@@ -1745,7 +1766,9 @@ $("#sell-lines").addEventListener("change",e=>{
 });
 $("#sell-lines").addEventListener("input",e=>{
   const line=e.target.closest(".sline");if(!line)return;
-  const info=sellInfo($(".sl-item",line).value);
+  const info=sellInfo($(".sl-item",line).value,line);
+  if(info&&e.target.classList.contains("q-cost")&&info.ref>0&&!$(".sl-price",line).dataset.touched)$(".sl-price",line).value=info.ref;
+  if(e.target.classList.contains("sl-price"))e.target.dataset.touched="1";
   if(info&&e.target.classList.contains("sl-disc")){
     const raw=e.target.value.trim();let d=0;
     if(/[%٪]/.test(raw)){const p=parseNum(raw.replace(/[%٪]/g,""));d=p>=0?info.ref*p/100:0}
@@ -1765,12 +1788,13 @@ $("#sell-form").addEventListener("submit",async e=>{
   for(const el of $$("#sell-lines .sline")){
     const val=$(".sl-item",el).value,rawPrice=$(".sl-price",el).value;
     if(!val&&!rawPrice)continue;
-    const info=sellInfo(val),qty=parseNum($(".sl-qty",el).value),price=parseNum(rawPrice);
-    if(!info)return toast("کالای همه‌ی ردیف‌ها را انتخاب کنید");
+    const info=sellInfo(val,el),qty=parseNum($(".sl-qty",el).value),price=parseNum(rawPrice);
+    if(!info)return toast(val==="x"?"نام و مدل کالای ثبت‌نشده را بنویسید":"کالای همه‌ی ردیف‌ها را انتخاب کنید");
     if(!(qty>0)||!(price>=0))return toast("تعداد و قیمت نهایی را درست وارد کنید");
-    const sum=(used.get(val)||0)+qty;
+    const key=val==="x"?"x:"+keyOf(info.name,info.model):val;
+    const sum=(used.get(key)||0)+qty;
     if(sum>info.avail)return toast("موجودی «"+info.name+"» کافی نیست");
-    used.set(val,sum);
+    used.set(key,sum);
     rows.push({info,qty,price});
   }
   if(!rows.length)return toast("حداقل یک کالا انتخاب کنید");
@@ -1778,6 +1802,16 @@ $("#sell-form").addEventListener("submit",async e=>{
   if(saleMode==="inst"){inst=readInstPlan(rows.reduce((s,r)=>s+r.qty*r.price,0),customer,date);if(!inst)return}
   const btn=$("#sl-save");btn.disabled=true;
   try{
+    for(const r of rows){
+      if(r.info.fresh){
+        const ex=findProduct(r.info.name,r.info.model);
+        if(ex){r.info.id=ex.id;r.info.fresh=false;continue}
+        await ensureModel(r.info.model,new Set());
+        const nid=newId("products");
+        await put("products",nid,{name:r.info.name,model:r.info.model,qty:r.qty,avgCost:r.info.cost,lastCost:r.info.cost,code:await nextInternalCode(),thumb:"",manualSale:0,updated:Date.now()});
+        r.info.id=nid;r.info.fresh=false;
+      }
+    }
     const items=rows.map(r=>({kind:r.info.kind,refId:r.info.id,name:r.info.name,model:r.info.model,serial:r.info.serial,
       qty:r.qty,ref:r.info.ref,price:r.price,cost:r.info.cost}));
     const goods=items.reduce((s,i)=>s+i.qty*i.price,0);
@@ -3294,6 +3328,38 @@ function syncMark(ok){
 }
 window.addEventListener("online",()=>syncMark(true));
 window.addEventListener("offline",()=>syncMark(false));
+
+/* ---------- bulk add of stock (paste from Excel) ---------- */
+let bulkRows=[];
+function parseBulk(){
+  const rial=$("#bulk-rial").checked,rows=[],bad=[];
+  $("#bulk-txt").value.split(/\r?\n/).forEach((ln,i)=>{
+    if(!ln.trim())return;
+    const c=ln.split(/\t|\||;/).map(x=>x.trim());
+    if(c.length<4){bad.push(i+1);return}
+    const qty=parseNum(c[2]);let cost=parseNum(c[3]),sale=c[4]!=null&&c[4]!==""?parseNum(c[4]):0;
+    if(!c[0]||!c[1]||!(qty>0)||!(cost>0)){if(i===0&&!(qty>0))return;bad.push(i+1);return}
+    if(rial){cost=cost/10;if(sale>0)sale=sale/10}
+    rows.push({name:c[0],model:c[1],qty,cost:Math.round(cost),manualSale:sale>0?Math.round(sale):0});
+  });
+  return {rows,bad};
+}
+$("#bulk-prev").addEventListener("click",()=>{
+  const {rows,bad}=parseBulk();bulkRows=rows;
+  const tot=rows.reduce((s,r)=>s+r.qty*r.cost,0),units=rows.reduce((s,r)=>s+r.qty,0);
+  $("#bulk-out").innerHTML=rows.length?("<b>"+fmt(rows.length)+"</b> ردیف · <b>"+fmt(units)+"</b> عدد · ارزش <b>"+fmt(tot)+"</b> تومان"+(bad.length?' · <span class="loss">ردیف‌های نامعتبر (رد می‌شود): '+bad.slice(0,15).map(fmt).join("، ")+"</span>":"")):"ردیف معتبری پیدا نشد. هر ردیف باید حداقل ۴ ستون داشته باشد.";
+  $("#bulk-go").disabled=!rows.length;
+});
+$("#bulk-go").addEventListener("click",async()=>{
+  if(!bulkRows.length)return;
+  const btn=$("#bulk-go");btn.disabled=true;
+  try{
+    await applyItems(bulkRows.map(r=>({name:r.name,model:r.model,qty:r.qty,cost:r.cost,manualSale:r.manualSale})));
+    toast(fmt(bulkRows.length)+" ردیف به انبار اضافه شد");
+    $("#bulk-txt").value="";$("#bulk-out").textContent="";bulkRows=[];
+    $$("nav.tabs button")[0].click();
+  }catch(e){toast("ذخیره نشد، دوباره تلاش کنید");btn.disabled=false}
+});
 
 /* ---------- start ---------- */
 ["i-date","sl-date","r-date","pe-date"].forEach(id=>writeDate($("#"+id),todayISO()));
