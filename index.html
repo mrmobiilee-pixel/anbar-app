@@ -163,6 +163,7 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="stock" aria-selected="true">موجودی انبار</button>
+    <button role="tab" data-tab="count" aria-selected="false">شمارش انبار</button>
     <button role="tab" data-tab="buy" aria-selected="false">فاکتور خرید جدید</button>
     <button role="tab" data-tab="sell" aria-selected="false">فروش جدید</button>
     <button role="tab" data-tab="invoices" aria-selected="false">فاکتورها</button>
@@ -248,6 +249,20 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
           <button class="btn" type="submit" id="sl-save">ثبت فروش و کم کردن از انبار</button>
         </div>
       </form>
+    </div>
+  </section>
+
+  <!-- شمارش انبار -->
+  <section class="panel" id="p-count">
+    <div class="card">
+      <h2 style="margin:0 0 4px;font-size:16px">شمارش انبار</h2>
+      <p class="hint">تعداد موجودی ثبت‌شده در این صفحه عمداً نشان داده نمی‌شود تا بدون تأثیر از عدد قبلی بشمارید. تعداد واقعی هر کالا را بنویسید و Enter بزنید یا از کادر بیرون بروید؛ همان لحظه ذخیره می‌شود و موجودی همان عدد می‌شود. کالایی که شمرده نشود دست‌نخورده می‌ماند. کالایی که اینجا نیست را از تب «فاکتور خرید جدید» اضافه کنید.</p>
+      <div class="inl" style="flex-wrap:wrap;gap:8px;margin:10px 0">
+        <input id="cn-q" placeholder="جست‌وجوی نام، مدل یا کد" style="flex:1;min-width:200px">
+        <div class="seg" id="cn-seg"><button type="button" data-f="todo" aria-pressed="true">شمرده‌نشده</button><button type="button" data-f="done" aria-pressed="false">شمرده‌شده</button><button type="button" data-f="all" aria-pressed="false">همه</button></div>
+      </div>
+      <div class="sub" id="cn-prog" style="margin-bottom:8px"></div>
+      <div id="cn-list"></div>
     </div>
   </section>
 
@@ -1328,7 +1343,7 @@ function updateSellTotals(){
 function render(){
   renderStats();renderLists();renderStock();renderUnits();renderInvoices();renderSales();renderModels();renderSettings();renderShopInfo();renderRepairSettings();renderLock();renderHistory();renderClub();renderClubHint();maybeBackfill();
   renderAlerts();renderDues();renderInstallments();renderRepairs();renderRepairView();renderCosts();renderReport();maybeEnsureShop();
-  refreshSellOptions();updateManualPreview();updateInvoiceTotals();updateSellTotals();
+  renderCount();refreshSellOptions();updateManualPreview();updateInvoiceTotals();updateSellTotals();
 }
 
 /* ---------- dues: cheques, promises, installments, shop rent ---------- */
@@ -3359,6 +3374,47 @@ $("#bulk-go").addEventListener("click",async()=>{
     $("#bulk-txt").value="";$("#bulk-out").textContent="";bulkRows=[];
     $$("nav.tabs button")[0].click();
   }catch(e){toast("ذخیره نشد، دوباره تلاش کنید");btn.disabled=false}
+});
+
+/* ---------- blind stock count: expected qty is never shown ---------- */
+let cnFilter="todo",cnDraft=new Map();
+const CN_MAX=60;
+function renderCount(){
+  const box=$("#cn-list");if(!box)return;
+  if(box.contains(document.activeElement)&&document.activeElement.tagName==="INPUT")return;
+  const q=norm($("#cn-q").value);
+  const all=Array.from(col.products).sort(byName);
+  const done=all.filter(([,p])=>p.countedAt).length;
+  $("#cn-prog").innerHTML="شمرده‌شده: <b>"+fmt(done)+"</b> از <b>"+fmt(all.length)+"</b> کالا";
+  let list=all.filter(([,p])=>cnFilter==="all"||(cnFilter==="done"?!!p.countedAt:!p.countedAt));
+  if(q)list=list.filter(([,p])=>norm(p.name+" "+p.model+" "+(p.code||"")).includes(q));
+  if(!list.length){box.innerHTML='<div class="empty">'+(cnFilter==="todo"&&!q?"همه‌ی کالاها شمرده شده‌اند.":"موردی نیست.")+"</div>";return}
+  const shown=list.slice(0,CN_MAX);
+  box.innerHTML=shown.map(([id,p])=>{
+    const d=cnDraft.has(id)?cnDraft.get(id):"";
+    return '<div class="card" style="padding:10px;margin-bottom:8px" data-id="'+id+'"><div class="inl" style="justify-content:space-between;gap:8px;flex-wrap:wrap">'+
+      '<div><b>'+esc(p.name)+" — "+esc(p.model)+'</b><div class="sub">'+esc(p.code||"")+(p.countedAt?' · <span class="pill">شمرده شد '+faDate(p.countedAt)+"</span>":"")+"</div></div>"+
+      '<label class="f" style="margin:0">تعداد واقعی<input class="cn-in num" inputmode="numeric" style="width:90px" value="'+esc(d)+'"></label></div></div>';
+  }).join("")+(list.length>shown.length?'<div class="sub">'+fmt(list.length-shown.length)+" کالای دیگر؛ برای دیدن آن‌ها جست‌وجو کنید یا بعد از شمارش این‌ها ادامه دهید.</div>":"");
+}
+$("#cn-q").addEventListener("input",renderCount);
+$("#cn-seg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-f]");if(!b)return;
+  cnFilter=b.dataset.f;$$("#cn-seg button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));renderCount();
+});
+$("#cn-list").addEventListener("input",e=>{
+  const c=e.target.closest(".card[data-id]");if(c&&e.target.classList.contains("cn-in"))cnDraft.set(c.dataset.id,e.target.value);
+});
+$("#cn-list").addEventListener("change",async e=>{
+  if(!e.target.classList.contains("cn-in"))return;
+  const c=e.target.closest(".card[data-id]"),id=c.dataset.id,p=col.products.get(id);
+  const raw=e.target.value.trim();if(!p||raw==="")return;
+  const n=parseNum(raw);
+  if(!(n>=0)||Math.round(n)!==n)return toast("تعداد باید عدد صحیح باشد");
+  e.target.blur();cnDraft.delete(id);
+  try{await put("products",id,Object.assign({},p,{qty:n,countedAt:todayISO(),updated:Date.now()}));toast("ثبت شد: "+esc(p.model))}
+  catch(err){toast("ذخیره نشد، دوباره تلاش کنید")}
+  renderCount();
 });
 
 /* ---------- start ---------- */
