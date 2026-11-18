@@ -1848,6 +1848,12 @@ $("#sell-form").addEventListener("submit",async e=>{
     doc.no=await nextSaleNo();
     doc.custId=await touchCustomer(customer,$("#sl-phone").value);
     await put("sales",saleId,doc);
+    // reference price follows the highest price ever sold
+    for(const it of items){
+      if(it.kind!=="p"||!(it.price>it.ref))continue;
+      const p=col.products.get(it.refId);
+      if(p)await put("products",it.refId,Object.assign({},p,{manualSale:it.price,updated:Date.now()}));
+    }
     for(const it of items){
       if(it.kind==="p"){
         const p=col.products.get(it.refId);
