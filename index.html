@@ -465,6 +465,7 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
         <label class="f">متن پایین فاکتور<input id="sh-note" placeholder="مثلاً: گارانتی ۷ روزه"></label>
         <label class="f">مهلت ماندن دستگاه تعمیری (روز)<input id="rp-days" class="num" inputmode="numeric"></label>
         <label class="f">هزینه‌ی انبارداری هر روز بعد از مهلت (تومان)<input id="rp-fee" class="num" inputmode="numeric"></label>
+        <label class="f">قیمت خرید هر ۱ گیگ وی‌پی‌ان (تومان)<input id="rp-vpn" class="num" inputmode="numeric"></label>
       </div>
     </div>
     <div class="card" style="margin-bottom:16px" id="auth-card">
@@ -2124,14 +2125,18 @@ $("#repair-form").addEventListener("submit",async e=>{
   if(!phone)return toast("شماره‌ی مشتری را بنویسید");
   let date=todayISO();
   if($("#r-date").value.trim()){date=readDate($("#r-date"));if(!date)return needDate($("#r-date"),"تاریخ دریافت")}
-  const price=parseNum($("#r-price").value),parts=repKind==="hard"?parseNum($("#r-parts").value):0;
+  const price=parseNum($("#r-price").value);
+  let kindF=repKind,parts=repKind==="hard"?parseNum($("#r-parts").value):0;
+  // VPN service: cost = GB × rate from settings (the GB amount is read from the text, e.g. "وی پی ان 30G")
+  const vm=/(وی\s*پی\s*ان|vpn)/i.test(model+" "+fault)?(model+" "+fault).replace(/[۰-۹]/g,d=>"۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).match(/(\d+(?:\.\d+)?)\s*(gb|g|گیگ|گ)/i):null;
+  if(vm&&!(parts>0)){kindF="hard";parts=Math.round(Number(vm[1])*vpnRate())}
   const btn=e.submitter;if(btn)btn.disabled=true;
   try{
     const rid=newId("repairs");
     const saved=await saveRepairPhotos(rid,$("#r-photos").files,"recv");
     let thumb="";
     if(saved.length)try{thumb=await dataUrlThumb(saved[0].img)}catch(err){}
-    await put("repairs",rid,{rno:await nextRepairNo(),dev:repDev,kind:repKind,model,fault,cust:$("#r-cust").value.trim(),phone,
+    await put("repairs",rid,{rno:await nextRepairNo(),dev:repDev,kind:kindF,model,fault,cust:$("#r-cust").value.trim(),phone,
       specs:$("#r-specs").value.trim(),date,price:price>0?price:0,parts:parts>0?parts:0,status:"recv",deliveredDate:"",
       photoCount:saved.length,thumb,created:Date.now()});
     await touchCustomer($("#r-cust").value,phone);
@@ -2910,8 +2915,9 @@ async function nextRepairNo(){
 }
 const repNoOf=(id,r)=>(r&&r.rno)||id.slice(-5).toUpperCase();
 const rpDays=()=>{const v=Number(settings().repairDays);return v>=0?v:7};
+const vpnRate=()=>{const v=Number(settings().vpnRate);return v>0?v:5000};
 const rpFee=()=>{const v=Number(settings().repairFee);return v>=0?v:100000};
-[["rp-days","repairDays"],["rp-fee","repairFee"]].forEach(([id,k])=>{
+[["rp-days","repairDays"],["rp-fee","repairFee"],["rp-vpn","vpnRate"]].forEach(([id,k])=>{
   $("#"+id).addEventListener("change",async()=>{
     const v=parseNum($("#"+id).value);
     if(!(v>=0))return toast("عدد معتبر بنویسید");
@@ -2922,6 +2928,7 @@ const rpFee=()=>{const v=Number(settings().repairFee);return v>=0?v:100000};
 function renderRepairSettings(){
   if(document.activeElement!==$("#rp-days"))$("#rp-days").value=rpDays();
   if(document.activeElement!==$("#rp-fee"))$("#rp-fee").value=rpFee();
+  if(document.activeElement!==$("#rp-vpn"))$("#rp-vpn").value=vpnRate();
 }
 function receiptTerms(){
   return [
