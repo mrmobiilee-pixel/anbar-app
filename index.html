@@ -1823,12 +1823,20 @@ $("#sell-form").addEventListener("submit",async e=>{
         if(ex){r.info.id=ex.id;r.info.fresh=false;continue}
         await ensureModel(r.info.model,new Set());
         const nid=newId("products");
-        await put("products",nid,{name:r.info.name,model:r.info.model,qty:r.qty,avgCost:r.info.cost,lastCost:r.info.cost,code:await nextInternalCode(),thumb:"",manualSale:0,updated:Date.now()});
+        await put("products",nid,{name:r.info.name,model:r.info.model,qty:0,avgCost:r.info.cost,lastCost:r.info.cost,code:await nextInternalCode(),thumb:"",manualSale:0,updated:Date.now()});
         r.info.id=nid;r.info.fresh=false;
       }
     }
-    const items=rows.map(r=>({kind:r.info.kind,refId:r.info.id,name:r.info.name,model:r.info.model,serial:r.info.serial,
-      qty:r.qty,ref:r.info.ref,price:r.price,cost:r.info.cost}));
+    const rem=new Map();
+    const items=rows.map(r=>{
+      const it={kind:r.info.kind,refId:r.info.id,name:r.info.name,model:r.info.model,serial:r.info.serial,
+        qty:r.qty,ref:r.info.ref,price:r.price,cost:r.info.cost};
+      if(it.kind==="p"){
+        const have=rem.has(it.refId)?rem.get(it.refId):Math.max(0,(col.products.get(it.refId)||{}).qty||0);
+        it.taken=Math.min(have,it.qty);rem.set(it.refId,have-it.taken);
+      }
+      return it;
+    });
     const goods=items.reduce((s,i)=>s+i.qty*i.price,0);
     const profit=items.reduce((s,i)=>s+i.qty*(i.price-i.cost),0);
     const saleId=newId("sales");
@@ -1843,7 +1851,7 @@ $("#sell-form").addEventListener("submit",async e=>{
     for(const it of items){
       if(it.kind==="p"){
         const p=col.products.get(it.refId);
-        if(p)await put("products",it.refId,Object.assign({},p,{qty:p.qty-it.qty,updated:Date.now()}));
+        if(p&&it.taken>0)await put("products",it.refId,Object.assign({},p,{qty:p.qty-it.taken,updated:Date.now()}));
       }else{
         const u=col.units.get(it.refId);
         if(u)await put("units",it.refId,Object.assign({},u,{status:"sold",saleId,soldPrice:it.price}));
@@ -1879,7 +1887,7 @@ $("#sale-list").addEventListener("click",async e=>{
       for(const it of s.items||[]){
         if(it.kind==="p"){
           const p=col.products.get(it.refId);
-          if(p)await put("products",it.refId,Object.assign({},p,{qty:p.qty+it.qty,updated:Date.now()}));
+          if(p)await put("products",it.refId,Object.assign({},p,{qty:p.qty+(it.taken!=null?it.taken:it.qty),updated:Date.now()}));
         }else{
           const u=col.units.get(it.refId);
           if(u)await put("units",it.refId,Object.assign({},u,{status:"stock",saleId:"",soldPrice:0}));
