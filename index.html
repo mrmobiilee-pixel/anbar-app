@@ -407,6 +407,7 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
             <label class="f">تاریخ<input id="pe-date" class="num" inputmode="numeric" placeholder="۱۴۰۵/۰۸/۱۲" required></label>
             <label class="f">مبلغ (تومان)<input id="pe-amt" class="num" inputmode="numeric" required></label>
             <label class="f">بابت چه چیزی<input id="pe-reason" list="dl-reasons" required></label>
+            <label class="f chk"><input type="checkbox" id="pe-shop"> هزینه‌ی مغازه است (از سود همان روز کم شود)</label>
           </div>
           <div class="footbar"><span></span><button class="btn" type="submit">ثبت هزینه</button></div>
         </form>
@@ -2309,8 +2310,9 @@ function dayRepairProfit(iso){
   for(const r of col.repairs.values())if(r.status==="done"&&r.deliveredDate===iso)p+=(Number(r.price)||0)-(Number(r.parts)||0)+(Number(r.storageFee)||0);
   return p;
 }
-const netForDate=iso=>daySales(iso).profit+dayRepairProfit(iso)-dailyShopCost(iso);
-const monthPersonal=ym=>Array.from(col.expenses.values()).filter(x=>monthKey(x.date)===ym).reduce((s,x)=>s+(Number(x.amount)||0),0);
+const dayShopExtra=iso=>Array.from(col.expenses.values()).filter(x=>x.shop&&x.date===iso).reduce((s,x)=>s+(Number(x.amount)||0),0);
+const netForDate=iso=>daySales(iso).profit+dayRepairProfit(iso)-dailyShopCost(iso)-dayShopExtra(iso);
+const monthPersonal=ym=>Array.from(col.expenses.values()).filter(x=>!x.shop&&monthKey(x.date)===ym).reduce((s,x)=>s+(Number(x.amount)||0),0);
 
 function renderCosts(){
   const total=shopMonthly(),today=todayISO();
@@ -2330,11 +2332,11 @@ function renderCosts(){
   }
   const ym=monthKey(today),monthSum=monthPersonal(ym);
   $("#pe-sum").innerHTML='<div class="stat"><b class="num">'+fmt(monthSum)+'</b><span>جمع '+jMonthTitle(today)+' (تومان)</span></div>'+
-    '<div class="stat"><b class="num">'+fmt(Array.from(col.expenses.values()).reduce((s,x)=>s+(Number(x.amount)||0),0))+"</b><span>جمع کل (تومان)</span></div>";
+    '<div class="stat"><b class="num">'+fmt(Array.from(col.expenses.values()).filter(x=>!x.shop).reduce((s,x)=>s+(Number(x.amount)||0),0))+"</b><span>جمع کل (تومان)</span></div>";
   const rows=Array.from(col.expenses).sort((a,b)=>(b[1].date||"").localeCompare(a[1].date||"")||(b[1].created||0)-(a[1].created||0));
   $("#pe-box").innerHTML=rows.length
     ?'<table style="min-width:520px"><thead><tr><th>تاریخ</th><th>بابت</th><th>مبلغ (تومان)</th><th></th></tr></thead><tbody>'+
-      rows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+'</td><td class="num"><b>'+fmt(x.amount)+
+      rows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+(x.shop?' <span class="pill">هزینه‌ی مغازه · از سود کم شد</span>':"")+'</td><td class="num"><b>'+fmt(x.amount)+
         '</b></td><td><button class="btn danger small" data-act="pe-del">حذف</button></td></tr>').join("")+"</tbody></table>"
     :'<div class="empty">هنوز هزینه‌ی شخصی ثبت نشده است.</div>';
   const reasons=new Set(Array.from(col.expenses.values()).map(x=>x.reason));
@@ -2345,7 +2347,7 @@ function renderReport(){
   const today=todayISO(),j=gToJ(today),first=jToG(j.y,j.m,1),n=daysBetween(first,today)+1,daily=dailyShopCost(today);
   const rows=[];let monthNet=0,monthSales=0,monthShop=0,monthBuy=0;
   for(let i=0;i<n;i++){
-    const iso=addDays(first,i),s=daySales(iso),rp=dayRepairProfit(iso),dc=dailyShopCost(iso),net=s.profit+rp-dc,buy=dayPurchases(iso);
+    const iso=addDays(first,i),s=daySales(iso),rp=dayRepairProfit(iso),dc=dailyShopCost(iso)+dayShopExtra(iso),net=s.profit+rp-dc,buy=dayPurchases(iso);
     monthNet+=net;monthSales+=s.total;monthShop+=dc;monthBuy+=buy;
     rows.push({iso,s,rp,dc,net,buy});
   }
@@ -2410,7 +2412,7 @@ $("#pe-form").addEventListener("submit",async e=>{
   if(!date)return needDate($("#pe-date"),"تاریخ");
   if(!(amount>0))return toast("مبلغ را وارد کنید");
   if(!reason)return toast("بنویسید بابت چه چیزی بوده");
-  await put("expenses",newId("expenses"),{date,amount,reason,created:Date.now()});
+  await put("expenses",newId("expenses"),{date,amount,reason,shop:$("#pe-shop").checked,created:Date.now()});
   e.target.reset();writeDate($("#pe-date"),todayISO());
   toast("هزینه ثبت شد");
 });
