@@ -2312,6 +2312,16 @@ function dayRepairProfit(iso){
 }
 const dayShopExtra=iso=>Array.from(col.expenses.values()).filter(x=>x.shop&&x.date===iso).reduce((s,x)=>s+(Number(x.amount)||0),0);
 const netForDate=iso=>daySales(iso).profit+dayRepairProfit(iso)-dailyShopCost(iso)-dayShopExtra(iso);
+function allDatesUpToToday(){
+  const today=todayISO();let min=today;
+  for(const v of col.sales.values())if(v.date&&v.date<min)min=v.date;
+  for(const v of col.invoices.values())if(v.date&&v.date<min)min=v.date;
+  for(const v of col.repairs.values()){const d=v.deliveredDate||v.date;if(d&&d<min)min=d}
+  for(const v of col.expenses.values())if(v.shop&&v.date&&v.date<min)min=v.date;
+  const out=[];for(let i=0;i<=daysBetween(min,today);i++)out.push(addDays(min,i));
+  return out;
+}
+const netAfterBuy=iso=>netForDate(iso)-dayPurchases(iso);
 const monthPersonal=ym=>Array.from(col.expenses.values()).filter(x=>!x.shop&&monthKey(x.date)===ym).reduce((s,x)=>s+(Number(x.amount)||0),0);
 
 function renderCosts(){
@@ -2352,9 +2362,17 @@ function renderReport(){
     rows.push({iso,s,rp,dc,net,buy});
   }
   rows.reverse();
+  let totNet=0,totBuy=0,totShop=0,totProfit=0;
+  for(const iso of allDatesUpToToday()){totNet+=netForDate(iso);totBuy+=dayPurchases(iso);totShop+=dailyShopCost(iso)+dayShopExtra(iso);totProfit+=daySales(iso).profit+dayRepairProfit(iso)}
+  const totAfter=totNet-totBuy,todayAfter=rows[0]?rows[0].net-rows[0].buy:0;
   const todayNet=rows[0]?rows[0].net:0,pers=monthPersonal(monthKey(today));
   const cls=v=>v<0?"loss":"gain";
-  $("#report-sum").innerHTML='<div class="stat"><b class="num '+cls(todayNet)+'">'+fmt(todayNet)+"</b><span>خالص امروز (تومان)</span></div>"+
+  $("#report-sum").innerHTML='<div class="stat"><b class="num '+cls(totAfter)+'">'+fmt(totAfter)+"</b><span>سود خالص تا امروز، پس از کسر همه‌ی خریدها و هزینه‌های مغازه (تومان)</span></div>"+
+    '<div class="stat"><b class="num '+cls(todayAfter)+'">'+fmt(todayAfter)+"</b><span>سود خالص امروز پس از کسر خرید</span></div>"+
+    '<div class="stat"><b class="num">'+fmt(totProfit)+"</b><span>جمع سود فروش و تعمیرات تا امروز</span></div>"+
+    '<div class="stat"><b class="num">'+fmt(totShop)+"</b><span>جمع هزینه‌ی مغازه تا امروز</span></div>"+
+    '<div class="stat"><b class="num">'+fmt(totBuy)+"</b><span>جمع خریدها تا امروز</span></div>"+
+    '<div class="stat"><b class="num '+cls(todayNet)+'">'+fmt(todayNet)+"</b><span>خالص امروز (تومان)</span></div>"+
     '<div class="stat"><b class="num '+cls(monthNet)+'">'+fmt(monthNet)+"</b><span>خالص "+jMonthTitle(today)+"</span></div>"+
     '<div class="stat"><b class="num">'+fmt(monthSales)+"</b><span>جمع فروش این ماه</span></div>"+
     '<div class="stat"><b class="num">'+fmt(rows[0]?rows[0].buy:0)+"</b><span>خرید امروز</span></div>"+
@@ -2365,9 +2383,9 @@ function renderReport(){
   $("#report-hint").textContent=daily>0
     ?"از سود هر روز از "+faDate(settings().shopStart||today)+" به بعد، "+fmt(dailyShopCost())+" تومان هزینه‌ی مغازه کم می‌شود (جمع ماهانه ÷ ۳۰) و اول هر ماه شمسی جمع هزینه‌ی ماه از صفر شروع می‌شود. سود فروش اقساطی کامل در روز فروش حساب می‌شود و سود تعمیر در روز تحویل."
     :"هزینه‌ی مغازه ثبت نشده است. از تب «هزینه‌ها» اجاره، شارژ، برق و اینترنت را وارد کنید تا از سود روزانه کم شود.";
-  $("#report-box").innerHTML='<table style="min-width:760px"><thead><tr><th>تاریخ</th><th>جمع فروش</th><th>سود فروش</th><th>سود تعمیرات</th><th>هزینه‌ی مغازه</th><th>خالص روز</th><th>مبلغ خرید</th></tr></thead><tbody>'+
+  $("#report-box").innerHTML='<table style="min-width:900px"><thead><tr><th>تاریخ</th><th>جمع فروش</th><th>سود فروش</th><th>سود تعمیرات</th><th>هزینه‌ی مغازه</th><th>خالص روز</th><th>مبلغ خرید</th><th>سود خالص پس از کسر خرید</th></tr></thead><tbody>'+
     rows.map(r=>'<tr'+(r.iso===today?' style="background:var(--accent-soft)"':"")+"><td>"+faDate(r.iso)+(r.iso===today?' <span class="pill">امروز</span>':"")+'</td><td class="num">'+fmt(r.s.total)+
-      '</td><td class="num">'+fmt(r.s.profit)+'</td><td class="num">'+fmt(r.rp)+'</td><td class="num">'+(r.dc?"−"+fmt(r.dc):"—")+'</td><td class="num '+cls(r.net)+'">'+fmt(r.net)+'</td><td class="num">'+(r.buy?fmt(r.buy):"—")+"</td></tr>").join("")+"</tbody></table>";
+      '</td><td class="num">'+fmt(r.s.profit)+'</td><td class="num">'+fmt(r.rp)+'</td><td class="num">'+(r.dc?"−"+fmt(r.dc):"—")+'</td><td class="num '+cls(r.net)+'">'+fmt(r.net)+'</td><td class="num">'+(r.buy?fmt(r.buy):"—")+'</td><td class="num '+cls(r.net-r.buy)+'"><b>'+fmt(r.net-r.buy)+"</b></td></tr>").join("")+"</tbody></table>";
 }
 
 /* shop costs events */
