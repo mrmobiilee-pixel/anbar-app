@@ -2318,6 +2318,7 @@ function allDatesUpToToday(){
   for(const v of col.invoices.values())if(v.date&&v.date<min)min=v.date;
   for(const v of col.repairs.values()){const d=v.deliveredDate||v.date;if(d&&d<min)min=d}
   for(const v of col.expenses.values())if(v.shop&&v.date&&v.date<min)min=v.date;
+  const ss=settings().shopStart;if(ss&&ss>min)min=ss;
   const out=[];for(let i=0;i<=daysBetween(min,today);i++)out.push(addDays(min,i));
   return out;
 }
