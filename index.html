@@ -2393,8 +2393,11 @@ function renderCosts(){
 function renderReport(){
   const today=todayISO(),j=gToJ(today),first=jToG(j.y,j.m,1),n=daysBetween(first,today)+1,daily=dailyShopCost(today);
   const rows=[];let monthNet=0,monthSales=0,monthShop=0,monthBuy=0;
+  const ss=settings().shopStart;
   for(let i=0;i<n;i++){
-    const iso=addDays(first,i),s=daySales(iso),rp=dayRepairProfit(iso),dc=dailyShopCost(iso)+dayShopExtra(iso),net=s.profit+rp-dc,buy=dayPurchases(iso);
+    const iso=addDays(first,i);
+    if(ss&&iso<ss)continue;
+    const s=daySales(iso),rp=dayRepairProfit(iso),dc=dailyShopCost(iso)+dayShopExtra(iso),net=s.profit+rp-dc,buy=dayPurchases(iso);
     monthNet+=net;monthSales+=s.total;monthShop+=dc;monthBuy+=buy;
     rows.push({iso,s,rp,dc,net,buy});
   }
