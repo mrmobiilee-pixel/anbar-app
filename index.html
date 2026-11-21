@@ -1482,7 +1482,8 @@ function renderDues(){
 let payFor=null;
 function invPaymentsHtml(invId,invTotal){
   const list=payList().filter(p=>p.refId===invId&&p.src==="invoice").sort((a,b)=>a.due.localeCompare(b.due));
-  const sum=list.reduce((s,p)=>s+p.amount,0),rest=invTotal-sum;
+  const disc=Number((col.invoices.get(invId)||{}).discount)||0;
+  const sum=list.reduce((s,p)=>s+p.amount,0),rest=invTotal-disc-sum;
   const paid=list.filter(p=>p.status==="done").reduce((s,p)=>s+p.amount,0);
   const lines=list.map(p=>{
     const st=dueState(p);
@@ -1495,7 +1496,7 @@ function invPaymentsHtml(invId,invTotal){
     ?'<div class="pline" id="inv-payform" data-inv="'+invId+'">'+payLineHtml().replace('<button type="button" class="btn danger small p-del">حذف</button>','')+
       '<button type="button" class="btn small" data-act="inv-pay-save" data-id="'+invId+'">ذخیره پرداخت</button><button type="button" class="btn ghost small" data-act="inv-pay-cancel">انصراف</button></div>'
     :'<button type="button" class="btn ghost small" style="margin-top:8px" data-act="inv-pay-add" data-id="'+invId+'">+ ثبت پرداخت (نقد، چک یا وعده)</button>';
-  return '<div class="sub" style="margin-top:12px"><b>پرداخت‌ها به '+'این فاکتور</b> · پرداخت‌شده: '+fmt(paid)+" · جمع ثبت‌شده: "+fmt(sum)+
+  return '<div class="sub" style="margin-top:12px"><b>پرداخت‌ها به '+'این فاکتور</b> · پرداخت‌شده: '+fmt(paid)+" · جمع ثبت‌شده: "+fmt(sum)+(disc?" · تخفیف تأمین‌کننده: "+fmt(disc):"")+
     (rest>0?" · مانده‌ی ثبت‌نشده: "+fmt(rest):(rest<0?" · "+fmt(-rest)+" بیشتر از فاکتور":" · کامل"))+'</div>'+
     (list.length?'<ul class="invitems">'+lines+"</ul>":'<div class="sub">هنوز پرداختی برای این فاکتور ثبت نشده است.</div>')+form;
 }
