@@ -164,6 +164,7 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="stock" aria-selected="true">موجودی انبار</button>
     <button role="tab" data-tab="count" aria-selected="false">شمارش انبار</button>
+    <button role="tab" data-tab="people" aria-selected="false">سینا و احسان</button>
     <button role="tab" data-tab="buy" aria-selected="false">فاکتور خرید جدید</button>
     <button role="tab" data-tab="sell" aria-selected="false">فروش جدید</button>
     <button role="tab" data-tab="invoices" aria-selected="false">فاکتورها</button>
@@ -264,6 +265,40 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
       <div class="sub" id="cn-prog" style="margin-bottom:8px"></div>
       <div id="cn-list"></div>
     </div>
+  </section>
+
+  <!-- سینا و احسان: برداشت از مغازه به قیمت خرید -->
+  <section class="panel" id="p-people">
+    <div class="card">
+      <h2 style="margin:0 0 4px;font-size:16px">برداشت از فروشگاه</h2>
+      <p class="hint">کالایی که سینا یا احسان از مغازه برمی‌دارند فقط به قیمت خرید حساب می‌شود، بدون سود، از موجودی انبار کم می‌شود و به‌عنوان بدهی روی حساب خودشان می‌ماند. هر پرداختی که بکنند از بدهی کم می‌شود. این برداشت‌ها جزو فروش و سود روزانه نیستند.</p>
+      <div class="seg" id="pp-seg" style="margin:10px 0"><button type="button" data-who="sina" aria-pressed="true">سینا</button><button type="button" data-who="ehsan" aria-pressed="false">احسان</button></div>
+      <div class="stats" id="pp-sum"></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3 style="margin:0 0 8px;font-size:15px">برداشت کالا</h3>
+      <div class="row2" style="align-items:end">
+        <label class="f">کالا<select id="pp-item"></select></label>
+        <label class="f">تعداد<input id="pp-qty" class="num" inputmode="numeric" value="1"></label>
+        <label class="f">قیمت خرید واحد (تومان)<input id="pp-cost" class="num" inputmode="numeric"></label>
+        <button type="button" class="btn" id="pp-add">افزودن به لیست</button>
+      </div>
+      <div id="pp-cart" style="margin:10px 0"></div>
+      <div class="row2" style="align-items:end">
+        <label class="f">تاریخ<input id="pp-date" class="num" inputmode="numeric" placeholder="۱۴۰۵/۰۸/۲۸"></label>
+        <button type="button" class="btn primary" id="pp-save">ثبت برداشت</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3 style="margin:0 0 8px;font-size:15px">پرداخت از طرف او</h3>
+      <div class="row2" style="align-items:end">
+        <label class="f">مبلغ (تومان)<input id="pp-pay-amt" class="num" inputmode="numeric"></label>
+        <label class="f">تاریخ<input id="pp-pay-date" class="num" inputmode="numeric" placeholder="۱۴۰۵/۰۸/۲۸"></label>
+        <label class="f">توضیح<input id="pp-pay-note" placeholder="نقد، کارت، چک…"></label>
+        <button type="button" class="btn" id="pp-pay-save">ثبت پرداخت</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:15px">گردش حساب</h3><div id="pp-list"></div></div>
   </section>
 
   <!-- فاکتور خرید -->
@@ -518,7 +553,7 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
 (function(){
 "use strict";
 const CFG_KEY="anbar_gh_cfg";
-const EAGER=["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers"];
+const EAGER=["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers","withdrawals","personpay"];
 const POLL_MS=12000;
 const API="https://api.github.com";
 let cfg=null;try{cfg=JSON.parse(localStorage.getItem(CFG_KEY)||"null")}catch(e){}
@@ -823,7 +858,7 @@ function faDate(iso){
 
 /* ---------- data layer ---------- */
 let db=null;
-let col={products:new Map(),models:new Map(),invoices:new Map(),settings:new Map(),units:new Map(),sales:new Map(),repairs:new Map(),expenses:new Map(),shopcosts:new Map(),payments:new Map(),customers:new Map()};
+let col={products:new Map(),models:new Map(),invoices:new Map(),settings:new Map(),units:new Map(),sales:new Map(),repairs:new Map(),expenses:new Map(),shopcosts:new Map(),payments:new Map(),customers:new Map(),withdrawals:new Map(),personpay:new Map()};
 const loaded={};
 const DEFAULT_SETTINGS={defaultPct:20,basis:"last",round:1000,shopStart:"2026-11-04",repairDays:7,repairFee:100000,shopName:"آقای موبایل",shopAddr:"بلوار فردوس شرق، نبش وفا آذر جنوبی، طبقه دوم، پلاک ۲۴",shopPhone:"۰۹۳۹۷۰۰۹۷۱۱ - ۰۲۱۴۴۰۱۲۶۸۲"};
 const settings=()=>Object.assign({},DEFAULT_SETTINGS,col.settings.get("main")||{});
@@ -843,7 +878,7 @@ async function del(c,id){
 async function initDb(){
   try{db=await window.claude.use("db")}catch(e){db=null}
   if(!db){$("#dbnotice").hidden=false;render();return}
-  ["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers"].forEach(c=>{
+  ["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers","withdrawals","personpay"].forEach(c=>{
     db.collection(c).onSnapshot(snap=>{
       col[c]=new Map(snap.docs.map(d=>[d.id,d.data()]));
       loaded[c]=true;syncMark(true);$("#dbnotice").hidden=true;
@@ -1345,7 +1380,7 @@ function updateSellTotals(){
 function render(){
   renderStats();renderLists();renderStock();renderUnits();renderInvoices();renderSales();renderModels();renderSettings();renderShopInfo();renderRepairSettings();renderLock();renderHistory();renderClub();renderClubHint();maybeBackfill();
   renderAlerts();renderDues();renderInstallments();renderRepairs();renderRepairView();renderCosts();renderReport();maybeEnsureShop();
-  renderCount();refreshSellOptions();updateManualPreview();updateInvoiceTotals();updateSellTotals();
+  renderCount();renderPeople();refreshSellOptions();updateManualPreview();updateInvoiceTotals();updateSellTotals();
 }
 
 /* ---------- dues: cheques, promises, installments, shop rent ---------- */
@@ -2870,7 +2905,7 @@ $("#hd-nav").addEventListener("click",e=>{
 });
 
 /* ---------- backup / restore ---------- */
-const BK=["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers","photos","repairphotos"];
+const BK=["products","models","invoices","settings","units","sales","repairs","expenses","shopcosts","payments","customers","withdrawals","personpay","photos","repairphotos"];
 let restoreData=null;
 async function gatherAll(){
   const out={};
@@ -3458,6 +3493,117 @@ $("#cn-list").addEventListener("change",async e=>{
   catch(err){toast("ذخیره نشد، دوباره تلاش کنید")}
   renderCount();
 });
+
+/* ---------- سینا و احسان: برداشت به قیمت خرید، بدهی به مغازه ---------- */
+const PEOPLE={sina:"سینا",ehsan:"احسان"};
+let ppWho="sina",ppCart=[],ppOptsHtml="";
+const ppDebt=who=>{
+  const w=Array.from(col.withdrawals.values()).filter(x=>x.person===who).reduce((s,x)=>s+(Number(x.total)||0),0);
+  const p=Array.from(col.personpay.values()).filter(x=>x.person===who).reduce((s,x)=>s+(Number(x.amount)||0),0);
+  return {w,p,debt:w-p};
+};
+function ppOptions(){
+  let h=sellOptions().replace(/<option value="x">[^<]*<\/option>/,"");
+  return h;
+}
+function ppCartHtml(){
+  if(!ppCart.length)return '<div class="sub">هنوز کالایی به لیست اضافه نشده است.</div>';
+  const tot=ppCart.reduce((s,l)=>s+l.qty*l.cost,0);
+  return '<table style="min-width:420px"><thead><tr><th>کالا</th><th>تعداد</th><th>قیمت خرید</th><th>جمع</th><th></th></tr></thead><tbody>'+
+    ppCart.map((l,i)=>"<tr><td>"+esc(l.name)+" — "+esc(l.model)+'</td><td class="num">'+fmt(l.qty)+'</td><td class="num">'+fmt(l.cost)+'</td><td class="num">'+fmt(l.qty*l.cost)+
+      '</td><td><button type="button" class="btn danger small" data-act="pp-cart-del" data-i="'+i+'">حذف</button></td></tr>').join("")+
+    '</tbody></table><div class="sub" style="margin-top:6px">جمع این برداشت: <b>'+fmt(tot)+"</b> تومان</div>";
+}
+function renderPeople(){
+  const sel=$("#pp-item");if(!sel)return;
+  const who=ppWho,s=ppDebt(who);
+  $("#pp-sum").innerHTML='<div class="stat"><b class="num">'+fmt(s.w)+"</b><span>جمع برداشت "+PEOPLE[who]+" (به قیمت خرید)</span></div>"+
+    '<div class="stat"><b class="num">'+fmt(s.p)+"</b><span>پرداخت‌شده</span></div>"+
+    '<div class="stat"><b class="num '+(s.debt>0?"loss":"gain")+'">'+fmt(s.debt)+"</b><span>بدهی "+PEOPLE[who]+" به مغازه (تومان)</span></div>";
+  if(!sel.contains(document.activeElement)){
+    const h=ppOptions();if(h!==ppOptsHtml){ppOptsHtml=h;const v=sel.value;sel.innerHTML=h;sel.value=v}
+  }
+  if(!$("#pp-cart").contains(document.activeElement))$("#pp-cart").innerHTML=ppCartHtml();
+  const rows=[];
+  for(const [id,x] of col.withdrawals)if(x.person===who)rows.push({id,t:"w",x,d:x.date||"",c:x.created||0});
+  for(const [id,x] of col.personpay)if(x.person===who)rows.push({id,t:"p",x,d:x.date||"",c:x.created||0});
+  rows.sort((a,b)=>b.d.localeCompare(a.d)||b.c-a.c);
+  $("#pp-list").innerHTML=rows.length?'<table style="min-width:520px"><thead><tr><th>تاریخ</th><th>شرح</th><th>مبلغ (تومان)</th><th></th></tr></thead><tbody>'+
+    rows.map(r=>r.t==="w"
+      ?'<tr data-id="'+r.id+'"><td>'+faDate(r.x.date)+'</td><td>'+r.x.items.map(i=>esc(i.name)+" — "+esc(i.model)+" × "+fmt(i.qty)).join("، ")+'</td><td class="num loss">+'+fmt(r.x.total)+
+        '</td><td><button class="btn danger small" data-act="pp-del-w">حذف و برگرداندن به انبار</button></td></tr>'
+      :'<tr data-id="'+r.id+'"><td>'+faDate(r.x.date)+'</td><td>پرداخت'+(r.x.note?" · "+esc(r.x.note):"")+'</td><td class="num gain">−'+fmt(r.x.amount)+
+        '</td><td><button class="btn danger small" data-act="pp-del-p">حذف</button></td></tr>').join("")+"</tbody></table>"
+    :'<div class="empty">هنوز گردشی ثبت نشده است.</div>';
+}
+$("#pp-seg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-who]");if(!b)return;
+  ppWho=b.dataset.who;ppCart=[];$$("#pp-seg button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));renderPeople();
+});
+$("#pp-item").addEventListener("change",()=>{
+  const v=$("#pp-item").value,c=$("#pp-cost");
+  if(!v){c.value="";return}
+  const [k,id]=[v[0],v.slice(2)];
+  const cost=k==="p"?(col.products.get(id)||{}).avgCost:unitCost(col.units.get(id)||{});
+  c.value=Math.round(Number(cost)||0);
+});
+$("#pp-add").addEventListener("click",()=>{
+  const v=$("#pp-item").value;if(!v)return toast("کالا را انتخاب کنید");
+  const k=v[0],id=v.slice(2),qty=parseNum($("#pp-qty").value),cost=parseNum($("#pp-cost").value);
+  if(!(qty>0)||Math.round(qty)!==qty)return toast("تعداد باید عدد صحیح باشد");
+  if(!(cost>=0)||$("#pp-cost").value.trim()==="")return toast("قیمت خرید را وارد کنید");
+  const it=k==="p"?col.products.get(id):col.units.get(id);if(!it)return toast("کالا پیدا نشد");
+  if(k==="u"){if(ppCart.some(l=>l.refId===id))return toast("این دستگاه قبلاً در لیست هست");if(qty!==1)return toast("برای کالای تکی تعداد ۱ است")}
+  const inCart=ppCart.filter(l=>l.refId===id).reduce((s,l)=>s+l.qty,0);
+  if(k==="p"&&inCart+qty>it.qty)return toast("موجودی کافی نیست (موجودی "+fmt(it.qty)+")");
+  ppCart.push({kind:k,refId:id,name:it.name,model:it.model,qty,cost});
+  $("#pp-item").value="";$("#pp-qty").value="1";$("#pp-cost").value="";renderPeople();
+});
+$("#pp-cart").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-act=pp-cart-del]");if(!b)return;
+  ppCart.splice(Number(b.dataset.i),1);renderPeople();
+});
+$("#pp-save").addEventListener("click",async()=>{
+  if(!ppCart.length)return toast("کالایی در لیست نیست");
+  const date=readDate($("#pp-date"));if(!date)return needDate($("#pp-date"),"تاریخ");
+  const btn=$("#pp-save");btn.disabled=true;
+  try{
+    const items=ppCart.map(l=>({kind:l.kind,refId:l.refId,name:l.name,model:l.model,qty:l.qty,cost:l.cost}));
+    for(const it of items){
+      if(it.kind==="p"){const p=col.products.get(it.refId);it.taken=Math.min(Math.max(0,p?p.qty:0),it.qty)}
+    }
+    const total=items.reduce((s,i)=>s+i.qty*i.cost,0),id=newId("withdrawals");
+    await put("withdrawals",id,{person:ppWho,date,items,total,created:Date.now()});
+    for(const it of items){
+      if(it.kind==="p"){const p=col.products.get(it.refId);if(p&&it.taken>0)await put("products",it.refId,Object.assign({},p,{qty:p.qty-it.taken,updated:Date.now()}))}
+      else{const u=col.units.get(it.refId);if(u)await put("units",it.refId,Object.assign({},u,{status:"withdrawn",withdrawalId:id}))}
+    }
+    ppCart=[];writeDate($("#pp-date"),todayISO());toast("برداشت ثبت شد و از انبار کم شد");
+  }catch(err){toast("ذخیره نشد، دوباره تلاش کنید")}
+  btn.disabled=false;renderPeople();
+});
+$("#pp-pay-save").addEventListener("click",async()=>{
+  const amount=parseNum($("#pp-pay-amt").value),date=readDate($("#pp-pay-date"));
+  if(!(amount>0))return toast("مبلغ را وارد کنید");
+  if(!date)return needDate($("#pp-pay-date"),"تاریخ");
+  await put("personpay",newId("personpay"),{person:ppWho,date,amount,note:$("#pp-pay-note").value.trim(),created:Date.now()});
+  $("#pp-pay-amt").value="";$("#pp-pay-note").value="";writeDate($("#pp-pay-date"),todayISO());toast("پرداخت ثبت شد");
+});
+$("#pp-list").addEventListener("click",async e=>{
+  const b=e.target.closest("button[data-act]");if(!b)return;
+  const id=b.closest("tr").dataset.id;
+  if(b.dataset.act==="pp-del-p"){await del("personpay",id);return toast("حذف شد")}
+  if(b.dataset.act==="pp-del-w"){
+    const w=col.withdrawals.get(id);if(!w)return;
+    for(const it of w.items){
+      if(it.kind==="p"){const p=col.products.get(it.refId);if(p&&it.taken>0)await put("products",it.refId,Object.assign({},p,{qty:p.qty+it.taken,updated:Date.now()}))}
+      else{const u=col.units.get(it.refId);if(u&&u.status==="withdrawn")await put("units",it.refId,Object.assign({},u,{status:"stock",withdrawalId:undefined}))}
+    }
+    await del("withdrawals",id);toast("حذف شد و کالا به انبار برگشت");
+  }
+});
+document.addEventListener("DOMContentLoaded",()=>{});
+(function(){const d=$("#pp-date"),e=$("#pp-pay-date");if(d&&!d.value)writeDate(d,todayISO());if(e&&!e.value)writeDate(e,todayISO())})();
 
 /* ---------- start ---------- */
 ["i-date","sl-date","r-date","pe-date"].forEach(id=>writeDate($("#"+id),todayISO()));
