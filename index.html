@@ -435,6 +435,10 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
       </div>
       <div class="stats" id="shop-sum" style="margin:14px 0"></div>
       <div class="tablebox" id="shop-box"></div>
+      <h3 style="margin:18px 0 6px;font-size:15px">هزینه‌های روزمره‌ی مغازه (پیک، دستمزد و غیره)</h3>
+      <p class="hint">هر کدام از سود همان روز کم می‌شود.</p>
+      <div class="stats" id="se-sum" style="margin:10px 0"></div>
+      <div class="tablebox" id="se-box"></div>
     </div>
     <div id="cs-personal" hidden>
       <div class="card">
@@ -2381,10 +2385,20 @@ function renderCosts(){
   const ym=monthKey(today),monthSum=monthPersonal(ym);
   $("#pe-sum").innerHTML='<div class="stat"><b class="num">'+fmt(monthSum)+'</b><span>جمع '+jMonthTitle(today)+' (تومان)</span></div>'+
     '<div class="stat"><b class="num">'+fmt(Array.from(col.expenses.values()).filter(x=>!x.shop).reduce((s,x)=>s+(Number(x.amount)||0),0))+"</b><span>جمع کل (تومان)</span></div>";
-  const rows=Array.from(col.expenses).sort((a,b)=>(b[1].date||"").localeCompare(a[1].date||"")||(b[1].created||0)-(a[1].created||0));
+  const srt=(a,b)=>(b[1].date||"").localeCompare(a[1].date||"")||(b[1].created||0)-(a[1].created||0);
+  const shopRows=Array.from(col.expenses).filter(([,x])=>x.shop).sort(srt);
+  const shopTotal=shopRows.reduce((s,[,x])=>s+(Number(x.amount)||0),0),shopMonth=shopRows.filter(([,x])=>monthKey(x.date)===ym).reduce((s,[,x])=>s+(Number(x.amount)||0),0);
+  $("#se-sum").innerHTML='<div class="stat"><b class="num">'+fmt(shopMonth)+'</b><span>جمع '+jMonthTitle(today)+' (تومان)</span></div>'+
+    '<div class="stat"><b class="num">'+fmt(shopTotal)+"</b><span>جمع کل (تومان)</span></div>";
+  $("#se-box").innerHTML=shopRows.length
+    ?'<table style="min-width:520px"><thead><tr><th>تاریخ</th><th>بابت</th><th>مبلغ (تومان)</th><th></th></tr></thead><tbody>'+
+      shopRows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+'</td><td class="num"><b>'+fmt(x.amount)+
+        '</b></td><td><button class="btn danger small" data-act="pe-del">حذف</button></td></tr>').join("")+"</tbody></table>"
+    :'<div class="empty">هنوز هزینه‌ی روزمره‌ی مغازه ثبت نشده است.</div>';
+  const rows=Array.from(col.expenses).filter(([,x])=>!x.shop).sort(srt);
   $("#pe-box").innerHTML=rows.length
     ?'<table style="min-width:520px"><thead><tr><th>تاریخ</th><th>بابت</th><th>مبلغ (تومان)</th><th></th></tr></thead><tbody>'+
-      rows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+(x.shop?' <span class="pill">هزینه‌ی مغازه · از سود کم شد</span>':"")+'</td><td class="num"><b>'+fmt(x.amount)+
+      rows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+'</td><td class="num"><b>'+fmt(x.amount)+
         '</b></td><td><button class="btn danger small" data-act="pe-del">حذف</button></td></tr>').join("")+"</tbody></table>"
     :'<div class="empty">هنوز هزینه‌ی شخصی ثبت نشده است.</div>';
   const reasons=new Set(Array.from(col.expenses.values()).map(x=>x.reason));
@@ -2475,11 +2489,11 @@ $("#pe-form").addEventListener("submit",async e=>{
   e.target.reset();writeDate($("#pe-date"),todayISO());
   toast("هزینه ثبت شد");
 });
-$("#pe-box").addEventListener("click",async e=>{
+[$("#pe-box"),$("#se-box")].forEach(bx=>bx.addEventListener("click",async e=>{
   const b=e.target.closest('[data-act="pe-del"]');if(!b)return;
   await del("expenses",b.closest("tr").dataset.id);
   toast("حذف شد");
-});
+}));
 
 /* ---------- identify an item at sale time: by code or by photo ---------- */
 const idStatus=t=>{$("#id-status").textContent=t||""};
