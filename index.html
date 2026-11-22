@@ -2351,7 +2351,7 @@ function dayRepairProfit(iso){
   for(const r of col.repairs.values())if(r.status==="done"&&r.deliveredDate===iso)p+=(Number(r.price)||0)-(Number(r.parts)||0)+(Number(r.storageFee)||0);
   return p;
 }
-const dayShopExtra=iso=>Array.from(col.expenses.values()).filter(x=>x.shop&&x.date===iso).reduce((s,x)=>s+(Number(x.amount)||0),0);
+const dayShopExtra=iso=>Array.from(col.expenses.values()).filter(x=>x.shop&&!x.covered&&x.date===iso).reduce((s,x)=>s+(Number(x.amount)||0),0);
 const netForDate=iso=>daySales(iso).profit+dayRepairProfit(iso)-dailyShopCost(iso)-dayShopExtra(iso);
 function allDatesUpToToday(){
   const today=todayISO();let min=today;
@@ -2387,12 +2387,12 @@ function renderCosts(){
     '<div class="stat"><b class="num">'+fmt(Array.from(col.expenses.values()).filter(x=>!x.shop).reduce((s,x)=>s+(Number(x.amount)||0),0))+"</b><span>جمع کل (تومان)</span></div>";
   const srt=(a,b)=>(b[1].date||"").localeCompare(a[1].date||"")||(b[1].created||0)-(a[1].created||0);
   const shopRows=Array.from(col.expenses).filter(([,x])=>x.shop).sort(srt);
-  const shopTotal=shopRows.reduce((s,[,x])=>s+(Number(x.amount)||0),0),shopMonth=shopRows.filter(([,x])=>monthKey(x.date)===ym).reduce((s,[,x])=>s+(Number(x.amount)||0),0);
+  const shopTotal=shopRows.filter(([,x])=>!x.covered).reduce((s,[,x])=>s+(Number(x.amount)||0),0),shopMonth=shopRows.filter(([,x])=>!x.covered&&monthKey(x.date)===ym).reduce((s,[,x])=>s+(Number(x.amount)||0),0);
   $("#se-sum").innerHTML='<div class="stat"><b class="num">'+fmt(shopMonth)+'</b><span>جمع '+jMonthTitle(today)+' (تومان)</span></div>'+
     '<div class="stat"><b class="num">'+fmt(shopTotal)+"</b><span>جمع کل (تومان)</span></div>";
   $("#se-box").innerHTML=shopRows.length
     ?'<table style="min-width:520px"><thead><tr><th>تاریخ</th><th>بابت</th><th>مبلغ (تومان)</th><th></th></tr></thead><tbody>'+
-      shopRows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+'</td><td class="num"><b>'+fmt(x.amount)+
+      shopRows.map(([id,x])=>'<tr data-id="'+id+'"><td>'+faDate(x.date)+"</td><td>"+esc(x.reason)+(x.covered?' <span class="pill">جزو هزینه‌ی ثابت ماهانه · از سود جدا کم نمی‌شود</span>':"")+'</td><td class="num"><b>'+fmt(x.amount)+
         '</b></td><td><button class="btn danger small" data-act="pe-del">حذف</button></td></tr>').join("")+"</tbody></table>"
     :'<div class="empty">هنوز هزینه‌ی روزمره‌ی مغازه ثبت نشده است.</div>';
   const rows=Array.from(col.expenses).filter(([,x])=>!x.shop).sort(srt);
