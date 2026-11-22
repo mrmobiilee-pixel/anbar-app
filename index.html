@@ -286,6 +286,7 @@ body.locked>*:not(#lock):not(#toast):not(#gh-setup){display:none!important}
       <div id="pp-cart" style="margin:10px 0"></div>
       <div class="row2" style="align-items:end">
         <label class="f">تاریخ<input id="pp-date" class="num" inputmode="numeric" placeholder="۱۴۰۵/۰۸/۲۸"></label>
+        <label class="f">توضیحات<input id="pp-note" placeholder="مثلاً برای چه کسی یا بابت چه"></label>
         <button type="button" class="btn primary" id="pp-save">ثبت برداشت</button>
       </div>
     </div>
@@ -3534,7 +3535,7 @@ function renderPeople(){
   rows.sort((a,b)=>b.d.localeCompare(a.d)||b.c-a.c);
   $("#pp-list").innerHTML=rows.length?'<table style="min-width:520px"><thead><tr><th>تاریخ</th><th>شرح</th><th>مبلغ (تومان)</th><th></th></tr></thead><tbody>'+
     rows.map(r=>r.t==="w"
-      ?'<tr data-id="'+r.id+'"><td>'+faDate(r.x.date)+'</td><td>'+r.x.items.map(i=>esc(i.name)+" — "+esc(i.model)+" × "+fmt(i.qty)).join("، ")+'</td><td class="num loss">+'+fmt(r.x.total)+
+      ?'<tr data-id="'+r.id+'"><td>'+faDate(r.x.date)+'</td><td>'+r.x.items.map(i=>esc(i.name)+" — "+esc(i.model)+" × "+fmt(i.qty)).join("، ")+(r.x.note?' <span class="pill">'+esc(r.x.note)+"</span>":"")+'</td><td class="num loss">+'+fmt(r.x.total)+
         '</td><td><button class="btn danger small" data-act="pp-del-w">حذف و برگرداندن به انبار</button></td></tr>'
       :'<tr data-id="'+r.id+'"><td>'+faDate(r.x.date)+'</td><td>پرداخت'+(r.x.note?" · "+esc(r.x.note):"")+'</td><td class="num gain">−'+fmt(r.x.amount)+
         '</td><td><button class="btn danger small" data-act="pp-del-p">حذف</button></td></tr>').join("")+"</tbody></table>"
@@ -3577,12 +3578,12 @@ $("#pp-save").addEventListener("click",async()=>{
       if(it.kind==="p"){const p=col.products.get(it.refId);it.taken=Math.min(Math.max(0,p?p.qty:0),it.qty)}
     }
     const total=items.reduce((s,i)=>s+i.qty*i.cost,0),id=newId("withdrawals");
-    await put("withdrawals",id,{person:ppWho,date,items,total,created:Date.now()});
+    await put("withdrawals",id,{person:ppWho,date,items,total,note:$("#pp-note").value.trim(),created:Date.now()});
     for(const it of items){
       if(it.kind==="p"){const p=col.products.get(it.refId);if(p&&it.taken>0)await put("products",it.refId,Object.assign({},p,{qty:p.qty-it.taken,updated:Date.now()}))}
       else{const u=col.units.get(it.refId);if(u)await put("units",it.refId,Object.assign({},u,{status:"withdrawn",withdrawalId:id}))}
     }
-    ppCart=[];writeDate($("#pp-date"),todayISO());toast("برداشت ثبت شد و از انبار کم شد");
+    ppCart=[];$("#pp-note").value="";writeDate($("#pp-date"),todayISO());toast("برداشت ثبت شد و از انبار کم شد");
   }catch(err){toast("ذخیره نشد، دوباره تلاش کنید")}
   btn.disabled=false;renderPeople();
 });
